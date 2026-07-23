@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from starlette.responses import JSONResponse
+from starlette.responses import Response, JSONResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI()
@@ -12,6 +12,7 @@ tasks = [
 
 class TaskCreated(BaseModel):
     title: str = Field(min_length=1)
+    done: bool = Field(default=False)
 
 @app.get("/")
 async def root():
@@ -45,6 +46,31 @@ async def create_task(task: TaskCreated):
     if title == "":
         raise HTTPException(status_code=400, detail="Title cannot be blank")
 
-    new_id = len(tasks) + 1
-    new_task = {"id": new_id, "title": title, "done": False}
+    new_id = max((t["id"] for t in tasks), default=0) + 1
+    new_task = {"id": new_id, "title": title, "done": task.done}
     tasks.append(new_task)
+    return new_task
+
+@app.put("/tasks/{id}")
+async def update_task(id: int, update: TaskCreated):
+    for task in tasks:
+        if task["id"] == id:
+            title = update.title.strip()
+            if title == "":
+                raise HTTPException(status_code=400, detail="Title cannot be blank")
+            task["title"] = title
+            task["done"] = update.done
+            return task
+    raise HTTPException(status_code=404, detail=f"Task {id} not found")
+
+
+@app.delete("/tasks/{id}", status_code=204)
+async def delete_task(id: int):
+    for task in tasks:
+        if task["id"] == id:
+            tasks.remove(task)
+            return Response(status_code=204)
+    return JSONResponse(
+        status_code=404,
+        content={"error": f"Task {id} not found"}
+    )
